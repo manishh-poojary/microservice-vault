@@ -1,0 +1,116 @@
+# application.yml
+# ------------------
+# Resilience4j Retry configuration. Multiple named instances can be defined,
+# and referenced by name in @Retry(name = "...") on your service methods.
+
+resilience4j:
+  retry:
+    instances:
+      inventoryService:
+        max-attempts: 4                     # total attempts, including the first
+        wait-duration: 200ms                # base delay between attempts
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2    # 200ms -> 400ms -> 800ms
+        retry-exceptions:
+          - java.io.IOException
+          - org.springframework.web.client.ResourceAccessException
+          - java.util.concurrent.TimeoutException
+        ignore-exceptions:
+          - com.example.exceptions.InvalidRequestException  # never retry validation errors
+
+
+  circuit breaker:
+    instances:
+      inventoryService:
+        # --- Window & threshold config ---
+        sliding-window-type: COUNT_BASED        # or TIME_BASED
+        sliding-window-size: 10                 # track last 10 calls
+        minimum-number-of-calls: 5              # don't evaluate failure rate until 5 calls have happened
+        failure-rate-threshold: 50               # % - opens circuit if >= 50% of calls fail
+        slow-call-rate-threshold: 80             # % - also opens if too many calls are "slow"
+        slow-call-duration-threshold: 2s         # a call counts as "slow" if it exceeds this
+
+        # --- OPEN state behavior ---
+        wait-duration-in-open-state: 10s         # how long to stay OPEN before trying HALF_OPEN
+        automatic-transition-from-open-to-half-open-enabled: true
+
+        # --- HALF_OPEN state behavior ---
+        permitted-number-of-calls-in-half-open-state: 3  # trial calls allowed
+
+        # --- Which exceptions count as failures ---
+        record-exceptions:
+          - java.io.IOException
+          - org.springframework.web.client.ResourceAccessException
+          - java.util.concurrent.TimeoutException
+        ignore-exceptions:
+          - com.example.exceptions.InvalidRequestException
+
+    # Circuit Breaker + Retry are commonly combined - Retry handles the
+    # individual call, Circuit Breaker handles the bigger picture across calls.
+    # Order matters: Retry should be applied INSIDE Circuit Breaker, so a
+    # single logical "attempt with retries" counts as ONE call for the
+    # breaker's failure-rate calculation, not several.
+
+  # Resilience4j offers TWO bulkhead implementations:
+  #
+  # 1. bulkhead (Semaphore-based) - limits concurrent calls, lightweight,
+  #    doesn't dedicate actual OS threads. Good default choice.
+  #
+  # 2. thread-pool-bulkhead - dedicates an actual isolated thread pool per
+  #    dependency. Heavier, but gives true isolation including from thread
+  #    starvation. Requires the wrapped method to return CompletableFuture.
+  bulkhead:
+    instances:
+      paymentService:
+        max-concurrent-calls: 10      # max simultaneous calls allowed through
+        max-wait-duration: 0          # 0 = fail immediately if full (don't queue/wait)
+      reportService:
+        max-concurrent-calls: 2
+        max-wait-duration: 100ms      # allow callers to wait briefly for a free slot
+
+  thread-pool-bulkhead:
+    instances:
+      paymentServiceAsync:
+        max-thread-pool-size: 10
+        core-thread-pool-size: 5
+        queue-capacity: 20             # calls queue here if all threads are busy
+        keep-alive-duration: 20ms
+
+  # Resilience4j TimeLimiter configuration (Resilience4j's name for the
+  # Timeout pattern). Also shown: RestTemplate/WebClient-level timeouts,
+  # which you should ALSO configure - TimeLimiter alone only stops the
+  # CALLER from waiting; it doesn't cancel the underlying HTTP socket read
+  # unless the client itself is interruptible/cancellable (WebClient is;
+  # a blocking RestTemplate call on a plain thread often is not, which is
+  # why @TimeLimiter is normally paired with an ASYNC method).
+
+  time limiter:
+    instances:
+      inventoryService:
+        timeout-duration: 1s
+        cancel-running-future: true   # attempt to cancel the underlying Future on timeout
+
+  ratelimiter:
+    instances:
+      thirdPartyGeocodingApi:
+        limit-for-period: 10           # max calls allowed per refresh period
+        limit-refresh-period: 1s       # how often the permit count resets/refills
+        timeout-duration: 0            # 0 = fail immediately if no permit available (don't wait)
+        # set > 0 (e.g. 500ms) to let callers wait briefly for a permit
+
+      internalApiPublic:
+        limit-for-period: 100
+        limit-refresh-period: 1s
+        timeout-duration: 0
+
+  # Separate, and EQUALLY important: configure timeouts on the HTTP client
+  # itself. TimeLimiter bounds how long your CODE waits; the client's own
+  # connect/read timeouts bound the actual network call.
+  spring:
+    cloud:
+      openfeign:
+        client:
+          config:
+            inventoryService:
+              connect-timeout: 500      # ms - time to establish TCP connection
+              read-timeout: 1000        # ms - time to wait for response after connecting
