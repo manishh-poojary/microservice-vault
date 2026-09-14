@@ -10,7 +10,8 @@ This repository demonstrates how to build more fault-tolerant services using pat
 - Timeouts
 - Bulkhead Isolation
 
-It is designed as a practical reference and hands-on playground for understanding how these patterns behave in real-world service-to-service communication.
+It is designed as a practical reference and hands-on playground for understanding how these patterns behave in
+real-world service-to-service communication.
 
 ## Tech Stack
 
@@ -24,7 +25,8 @@ It is designed as a practical reference and hands-on playground for understandin
 
 ## Project Overview
 
-The application is organized around the `com.toolkit.microservices.vault.resilience` package and includes several implementation examples for resilience strategies:
+The application is organized around the `com.toolkit.microservices.vault.resilience` package and includes several
+implementation examples for resilience strategies:
 
 - `retry/` — retry logic with backoff and simulated transient failures
 - `circuitbreaker/` — circuit breaker state transitions and fallback handling
@@ -131,11 +133,13 @@ In distributed systems, dependencies can fail, slow down, or become overloaded. 
 
 ## Notes
 
-This project is primarily a learning and demonstration repository. It is not a production-ready microservice system, but it provides a clear foundation for understanding core resilience concepts.
+This project is primarily a learning and demonstration repository. It is not a production-ready microservice system, but
+it provides a clear foundation for understanding core resilience concepts.
 
 ## License
 
-This project does not currently include a specific license file. If it is shared publicly or published, consider adding an appropriate license before distribution.
+This project does not currently include a specific license file. If it is shared publicly or published, consider adding
+an appropriate license before distribution.
 
 ## Contributing
 

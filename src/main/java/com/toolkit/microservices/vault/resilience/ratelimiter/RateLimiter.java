@@ -50,7 +50,7 @@ public class RateLimiter {
         for (int i = 1; i <= 4; i++) {
             String result = RateLimiter.executeWithRateLimit(
                     apiLimiter::tryAcquire,
-                    () -> "Processed request " + Integer.toString((int) (Math.random() * 1000)),
+                    () -> "Processed request " + (int) (Math.random() * 1000),
                     () -> "429 Too Many Requests - please slow down"
             );
             System.out.println("Call " + i + " -> " + result);

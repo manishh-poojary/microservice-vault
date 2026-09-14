@@ -1,0 +1,24 @@
+# Kafka vs RabbitMQ — When to Use Which
+
+Both solve "asynchronous, decoupled communication between services" but
+with different underlying models, which makes them fit different jobs.
+
+| | Kafka | RabbitMQ |
+|---|---|---|
+| **Core model** | Durable, partitioned log | Exchange routes to queues |
+| **Message retention** | Configurable (hours-to-forever); consumers can REPLAY history | Consumed messages are typically gone once acked |
+| **Ordering** | Guaranteed per-partition (via message key) | Guaranteed per-queue (single consumer) |
+| **Routing flexibility** | Simple: topic + partition key | Rich: direct/topic/fanout/headers exchanges |
+| **Competing consumers** | Via shared `group-id` | Automatic — just bind multiple consumers to one queue |
+| **Broadcast to many services** | Each service uses its own `group-id` | Fanout exchange to multiple queues |
+| **Throughput** | Very high (built for high-volume event streams) | High, but generally lower ceiling than Kafka |
+| **Dead letter handling** | You implement it (error handler + DLQ topic, as shown) | Built into queue config (`x-dead-letter-exchange`) |
+| **Typical use case** | Event streaming, event sourcing, high-volume telemetry/logs, audit trails needing replay | Task queues, RPC-style async messaging, complex routing needs, lower-volume domain events |
+
+## Practical rule of thumb
+
+- **Need to replay/reprocess history, or extremely high throughput (millions of events/sec)?** → Kafka
+- **Need flexible routing (route by pattern, broadcast to some-but-not-all consumers, priority queues, delayed messages)?** → RabbitMQ
+- **Simple "publish a domain event, a few services react to it" and neither of the above matters much?** → Either works fine; pick whichever your team already operates, since operational maturity matters more than the marginal feature differences for most use cases.
+
+Both integrate identically with the Saga pattern (next topic) - the choreography/orchestration logic doesn't care which broker carries the events.

@@ -3,6 +3,7 @@
 # Resilience4j Retry configuration. Multiple named instances can be defined,
 # and referenced by name in @Retry(name = "...") on your service methods.
 
+# ------Retry------------------
 resilience4j:
   retry:
     instances:
@@ -18,6 +19,7 @@ resilience4j:
         ignore-exceptions:
           - com.example.exceptions.InvalidRequestException  # never retry validation errors
 
+# ------Circuit Breaker------------------
 
   circuit breaker:
     instances:
@@ -59,6 +61,9 @@ resilience4j:
   # 2. thread-pool-bulkhead - dedicates an actual isolated thread pool per
   #    dependency. Heavier, but gives true isolation including from thread
   #    starvation. Requires the wrapped method to return CompletableFuture.
+
+# ------Bulkhead------------------
+
   bulkhead:
     instances:
       paymentService:
@@ -84,11 +89,16 @@ resilience4j:
   # a blocking RestTemplate call on a plain thread often is not, which is
   # why @TimeLimiter is normally paired with an ASYNC method).
 
+# ------Time Limiter------------------
+
   time limiter:
     instances:
       inventoryService:
         timeout-duration: 1s
         cancel-running-future: true   # attempt to cancel the underlying Future on timeout
+
+
+# ------Rate Limiter------------------
 
   ratelimiter:
     instances:
@@ -114,3 +124,81 @@ resilience4j:
             inventoryService:
               connect-timeout: 500      # ms - time to establish TCP connection
               read-timeout: 1000        # ms - time to wait for response after connecting
+
+# ------Open Feign------------------
+
+inventory-service:
+  url: http://localhost:8081   # replace with service discovery in real deployments
+
+feign:
+  circuitbreaker:
+    enabled: true               # REQUIRED for @FeignClient's fallback/fallbackFactory to work at all
+
+  client:
+    config:
+      # 'default' applies to ALL Feign clients unless overridden by a
+      # client-specific block below (keyed by the @FeignClient "name").
+      default:
+        connect-timeout: 2000    # ms - time to establish the TCP connection
+        read-timeout: 5000       # ms - time to wait for the response after connecting
+        logger-level: basic
+
+      # Feign's own retry mechanism (separate from Resilience4j's @Retry).
+      # Most teams DISABLE this and rely on Resilience4j's @Retry instead, to
+      # avoid having TWO independent retry mechanisms stacking unpredictably.
+      inventory-service:
+        connect-timeout: 500     # tighter timeout for this specific, usually-fast dependency
+        read-timeout: 1000
+        logger-level: full       # more verbose for this client specifically
+        retryer: NONE            # disable Feign's built-in retry - use @Retry (Resilience4j) instead
+
+# ------Kafka------------------
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                          # wait for ALL in-sync replicas to ack (strongest durability guarantee)
+      retries: 3
+      properties:
+        enable.idempotence: true         # prevents duplicate messages on producer-side retries
+        max.in.flight.requests.per.connection: 5
+
+    consumer:
+      group-id: inventory-service        # consumers sharing a group-id COMPETE for partitions (see notes below)
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest        # where to start reading if no committed offset exists yet
+      properties:
+        spring.json.trusted.packages: "com.example.events"
+        # ^ JsonDeserializer refuses to deserialize into arbitrary classes
+        # from untrusted packages by default (a deserialization security
+        # guard) - must explicitly allow your event package(s).
+
+    listener:
+      ack-mode: manual
+
+# ------Rabbit MQ------------------
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+
+    listener:
+      simple:
+        acknowledge-mode: manual     # commit (ack) only after successful processing - same idea as Kafka's manual ack-mode
+        concurrency: 3               # min consumer threads per instance
+        max-concurrency: 10          # can scale up under load
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0            # exponential backoff between local redelivery attempts
+          max-interval: 10000ms
+
+    template:
+      mandatory: true                # producer: fail loudly if a message can't be routed to any queue (see ReturnsCallback)
